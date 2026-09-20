@@ -1,0 +1,86 @@
+﻿<Window x:Class="WebDAVBox.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:WebDAVBox"
+        mc:Ignorable="d"
+        Title="WPF WebDAV 客戶端" Height="500" Width="800" WindowStartupLocation="CenterScreen">
+    
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <!-- 伺服器設定區域 -->
+            <RowDefinition Height="Auto"/>
+            <!-- 當前路徑與操作按鈕 -->
+            <RowDefinition Height="Auto"/>
+            <!-- 檔案列表區域 -->
+            <RowDefinition Height="*"/>
+            <!-- 狀態列 -->
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- 1. 伺服器連線區 -->
+        <GroupBox x:Name="GbServerSettings" Header="WebDAV 伺服器設定" Grid.Row="0" Margin="0,0,0,10">
+            <Grid Margin="5">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="120"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="120"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Text="Server URL:" VerticalAlignment="Center" Margin="5"/>
+                <TextBox x:Name="TxtServerUrl" Grid.Column="1" Text="https://rausu.infini-cloud.net/dav/" VerticalAlignment="Center" Margin="5"/>
+
+                <TextBlock Text="帳號:" Grid.Column="2" VerticalAlignment="Center" Margin="5"/>
+                <TextBox x:Name="TxtUsername" Grid.Column="3" Text="ladder" VerticalAlignment="Center" Margin="5"/>
+
+                <TextBlock Text="密碼:" Grid.Column="4" VerticalAlignment="Center" Margin="5"/>
+                <PasswordBox x:Name="TxtPassword" Grid.Column="5"  VerticalAlignment="Center" Margin="5"/>
+
+                <Button x:Name="BtnConnect" Content="連線" Grid.Column="6" Width="80" Margin="5" Click="BtnConnect_Click"/>
+            </Grid>
+        </GroupBox>
+
+        <!-- 2. 操作欄 -->
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,10">
+            <Button x:Name="BtnGoUp" Content="⬆️ 上一層" Width="90" Height="30" Margin="0,0,10,0" Click="BtnGoUp_Click" IsEnabled="False"/>
+            <Button x:Name="BtnRefresh" Content="🔄 重新整理" Width="90" Height="30" Margin="0,0,10,0" Click="BtnRefresh_Click" IsEnabled="False"/>
+            <Button x:Name="BtnUpload" Content="📤 上傳檔案" Width="90" Height="30" Margin="0,0,10,0" Click="BtnUpload_Click" IsEnabled="False"/>
+            <TextBlock Text="當前路徑:" VerticalAlignment="Center" Margin="10,0,5,0" FontWeight="Bold"/>
+            <TextBlock x:Name="TxtCurrentPath" Text="/" VerticalAlignment="Center" Foreground="Blue"/>
+        </StackPanel>
+
+        <!-- 3. 檔案列表 (DataGrid) -->
+        <DataGrid x:Name="DgFiles" Grid.Row="2" AutoGenerateColumns="False" IsReadOnly="True"
+                  MouseDoubleClick="DgFiles_MouseDoubleClick" SelectionMode="Single"
+                  AllowDrop="True" PreviewDragOver="DgFiles_DragOver" Drop="DgFiles_Drop"
+                  >
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="名稱" Binding="{Binding Name}" Width="2*"/>
+                <DataGridTextColumn Header="類型" Binding="{Binding TypeDisplay}" Width="100"/>
+                <DataGridTextColumn Header="大小 (Bytes)" Binding="{Binding ContentLength}" Width="120"/>
+                <DataGridTextColumn Header="修改時間" Binding="{Binding LastModified}" Width="180"/>
+                <DataGridTemplateColumn Header="操作" Width="100">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <!--<Button Content="下載" Click="BtnDownloadItem_Click" 
+                                    Visibility="{Binding IsCollection, Converter={StaticResource InverseBoolToVisConverter}}"/>-->
+                            <Button Content="下載" Click="BtnDownloadItem_Click" Visibility="{Binding DownloadButtonVisibility}"/>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <!-- 4. 底部狀態列 -->
+        <StatusBar Grid.Row="3" Margin="0,10,0,0">
+            <StatusBarItem>
+                <TextBlock x:Name="TxtStatus" Text="準備就緒"/>
+            </StatusBarItem>
+        </StatusBar>
+    </Grid>
+</Window>
