@@ -5,7 +5,11 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:WebDAVBox"
         mc:Ignorable="d"
-        Title="WPF WebDAV 客戶端" Height="500" Width="800" WindowStartupLocation="CenterScreen">
+        Title="WPF WebDAV 客戶端"
+        Height="500" Width="800" WindowStartupLocation="CenterScreen"
+        Background="#F5F5F5" 
+       >
+    
     
     <Grid Margin="10">
         <Grid.RowDefinitions>
@@ -20,7 +24,7 @@
         </Grid.RowDefinitions>
 
         <!-- 1. 伺服器連線區 -->
-        <GroupBox x:Name="GbServerSettings" Header="WebDAV 伺服器設定" Grid.Row="0" Margin="0,0,0,10">
+        <GroupBox x:Name="GbServerSettings" Header="WebDAV 伺服器設定" Grid.Row="0" Margin="0,0,0,10" Visibility="Collapsed">
             <Grid Margin="5">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
@@ -50,20 +54,24 @@
             <Button x:Name="BtnGoUp" Content="⬆️ 上一層" Width="90" Height="30" Margin="0,0,10,0" Click="BtnGoUp_Click" IsEnabled="False"/>
             <Button x:Name="BtnRefresh" Content="🔄 重新整理" Width="90" Height="30" Margin="0,0,10,0" Click="BtnRefresh_Click" IsEnabled="False"/>
             <Button x:Name="BtnUpload" Content="📤 上傳檔案" Width="90" Height="30" Margin="0,0,10,0" Click="BtnUpload_Click" IsEnabled="False"/>
-            <TextBlock Text="當前路徑:" VerticalAlignment="Center" Margin="10,0,5,0" FontWeight="Bold"/>
-            <TextBlock x:Name="TxtCurrentPath" Text="/" VerticalAlignment="Center" Foreground="Blue"/>
+            <Button x:Name="BtnDelete" Content="🗑️ 刪除檔案" Width="90" Height="30" Margin="0,0,10,0" Click="BtnDelete_Click" IsEnabled="False"/>
+            <!--<TextBlock Text="當前路徑:" VerticalAlignment="Center" Margin="10,0,5,0" FontWeight="Bold"/>
+            <TextBlock x:Name="TxtCurrentPath" Text="/" VerticalAlignment="Center" Foreground="Blue"/>-->
         </StackPanel>
 
         <!-- 3. 檔案列表 (DataGrid) -->
         <DataGrid x:Name="DgFiles" Grid.Row="2" AutoGenerateColumns="False" IsReadOnly="True"
                   MouseDoubleClick="DgFiles_MouseDoubleClick" SelectionMode="Single"
                   AllowDrop="True" PreviewDragOver="DgFiles_DragOver" Drop="DgFiles_Drop"
+                  RowBackground="#FFFFFF" AlternatingRowBackground="#F9F9F9"
+                  HeadersVisibility="Column"
                   >
             <DataGrid.Columns>
                 <DataGridTextColumn Header="名稱" Binding="{Binding Name}" Width="2*"/>
                 <DataGridTextColumn Header="類型" Binding="{Binding TypeDisplay}" Width="100"/>
                 <DataGridTextColumn Header="大小 (Bytes)" Binding="{Binding ContentLength}" Width="120"/>
                 <DataGridTextColumn Header="修改時間" Binding="{Binding LastModified}" Width="180"/>
+                <!--<DataGridTextColumn Header="修改時間" Binding="{Binding LastModified, StringFormat={}{0:yyyy/MM/dd HH:mm:ss}}" Width="180"/>-->
                 <DataGridTemplateColumn Header="操作" Width="100">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>

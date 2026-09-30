@@ -9,7 +9,7 @@ using System.IO;
 using System.Net;
 using Microsoft.Win32;
 using WebDav;
-
+using System.ComponentModel;
 
 namespace WebDAVBox
 {
@@ -25,7 +25,59 @@ namespace WebDAVBox
         public MainWindow()
         {
             InitializeComponent();
+            // 訂閱 Loaded 事件，不要在建構子裡直接做網路請求
+            this.Loaded += MainWindow_Loaded;
         }
+
+        private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
+        {
+            string url = "";
+            string user = "";
+            string pass = "";
+
+            try
+            {
+                _serverUrl = url.EndsWith("/") ? url : url + "/";
+
+                var clientParams = new WebDavClientParams
+                {
+                    BaseAddress = new Uri(_serverUrl),
+                    Credentials = new NetworkCredential(user, pass),
+                    PreAuthenticate = true
+                };
+
+                _client = new WebDavClient(clientParams);
+
+                // 1. 異步驗證連線（完全不會卡住 UI，也不會引起死鎖）
+                TxtStatus.Text = "正在連線至 WebDAV 伺服器...";
+                var response = await _client.Propfind("");
+
+                if (response.IsSuccessful)
+                {
+                    _currentPath = "/";
+
+                    // 2. 異步載入檔案清單（在 UI 執行緒直接 await）
+                    await LoadDirectoryAsync(_currentPath);
+
+                    // 3. 更新 UI 控制項（此處本身就是 UI 執行緒，不需要 Dispatcher）
+                    BtnGoUp.IsEnabled = true;
+                    BtnRefresh.IsEnabled = true;
+                    BtnUpload.IsEnabled = true;
+                    BtnDelete.IsEnabled = true;
+                    TxtStatus.Text = "連線成功";
+                    GbServerSettings.Visibility = Visibility.Collapsed;
+                }
+                else
+                {
+                    TxtStatus.Text = $"連線失敗: {response.StatusCode}";
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"連線或讀取目錄時發生例外: {ex.Message}", "錯誤", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
 
         // 1. 連線至 WebDAV 伺服器并初始化 WebDavClient
         private async void BtnConnect_Click(object sender, RoutedEventArgs e)
@@ -119,7 +171,7 @@ namespace WebDAVBox
                     return;
                 }
 
-                var fileList = new List<WebDavItemViewModel>();
+                var fileList = new List<FileItemViewModel>();
 
                 // 解析回應中的 Resources
                 foreach (WebDavResource resource in response.Resources)
@@ -134,13 +186,13 @@ namespace WebDAVBox
                     // 提取檔案/資料夾名稱
                     string itemName = GetResourceName(resource);
 
-                    fileList.Add(new WebDavItemViewModel
+                    fileList.Add(new FileItemViewModel
                     {
                         Name = itemName,
-                        UriPath = resource.Uri,
+                        Path = resource.Uri,
                         IsCollection = resource.IsCollection,
                         ContentLength = resource.ContentLength ?? 0,
-                        LastModified = resource.LastModifiedDate ?? DateTime.MinValue
+                        LastModified = (resource.LastModifiedDate ?? DateTime.MinValue).ToString("yyyy/MM/dd HH:mm:ss")
                     });
                 }
 
@@ -152,8 +204,11 @@ namespace WebDAVBox
 
                 DgFiles.ItemsSource = fileList;
                 _currentPath = path;
-                TxtCurrentPath.Text = _currentPath;
+                //TxtCurrentPath.Text = _currentPath;
                 TxtStatus.Text = $"已載入 {fileList.Count} 個項目";
+
+                // 💡 ウィンドウの Title も一緒に更新！
+                Title = $"💡當前路徑:  {path}";
             }
             catch (Exception ex)
             {
@@ -176,11 +231,11 @@ namespace WebDAVBox
         // 3. 雙擊進入資料夾
         private async void DgFiles_MouseDoubleClick(object sender, MouseButtonEventArgs e)
         {
-            if (DgFiles.SelectedItem is WebDavItemViewModel selectedItem && selectedItem.IsCollection)
+            if (DgFiles.SelectedItem is FileItemViewModel selectedItem && selectedItem.IsCollection)
             {
                 // 取得相對路徑
                 Uri baseUri = new Uri(_serverUrl);
-                Uri itemUri = new Uri(baseUri, selectedItem.UriPath);
+                Uri itemUri = new Uri(baseUri, selectedItem.Path);
                 string relativePath = baseUri.MakeRelativeUri(itemUri).ToString();
 
                 if (!relativePath.StartsWith("/"))
@@ -217,7 +272,7 @@ namespace WebDAVBox
         // 7. 下載檔案 (使用 RawHttpGet)
         private async void BtnDownloadItem_Click(object sender, RoutedEventArgs e)
         {
-            if (sender is Button btn && btn.DataContext is WebDavItemViewModel item && !item.IsCollection)
+            if (sender is Button btn && btn.DataContext is FileItemViewModel item && !item.IsCollection)
             {
                 SaveFileDialog saveFileDialog = new SaveFileDialog
                 {
@@ -232,7 +287,7 @@ namespace WebDAVBox
 
                         // 轉換為相對路徑
                         Uri baseUri = new Uri(_serverUrl);
-                        Uri itemUri = new Uri(baseUri, item.UriPath);
+                        Uri itemUri = new Uri(baseUri, item.Path);
                         string relativePath = baseUri.MakeRelativeUri(itemUri).ToString();
 
                         // 使用 GetRawFile 發起 GET 請求下載資源串流
@@ -286,6 +341,52 @@ namespace WebDAVBox
                 MessageBox.Show($"上傳完成，成功上傳 {successCount} 個檔案！", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
                 await LoadDirectoryAsync(_currentPath);
                 BtnUpload.IsEnabled = true;
+            }
+        }
+
+
+
+        // 6. 删除檔案  
+        private async void BtnDelete_Click(object sender, RoutedEventArgs e)
+        {
+            // DataGrid で選択されている項目を取得 (FileItem クラス名は実際の環境に合わせて変更してください)
+            var selectedItem = DgFiles.SelectedItem as FileItemViewModel;  //  FileItem WebDavItemViewModel
+
+            if (selectedItem == null)
+            {
+                MessageBox.Show("請先選擇要刪除的檔案或資料夾。", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            // 削除の確認ダイアログ
+            var result = MessageBox.Show($"確定要刪除 [{selectedItem.Name}] 嗎？", "確認刪除",
+                                         MessageBoxButton.YesNo, MessageBoxImage.Warning);
+
+            if (result != MessageBoxResult.Yes) return;
+
+            try
+            {
+                TxtStatus.Text = $"正在刪除 {selectedItem.Name}...";
+
+                // WebDAV サーバーへの削除リクエスト (絶対パスまたは相対パスを指定)
+                string targetPath = selectedItem.Path; // 例: "/folder/file.txt"
+                var response = await _client.Delete(targetPath);
+
+                if (response.IsSuccessful)
+                {
+                    TxtStatus.Text = "刪除成功";
+                    // ディレクトリ一覧を再読み込みして最新状態にする
+                    await LoadDirectoryAsync(_currentPath);
+                }
+                else
+                {
+                    TxtStatus.Text = $"刪除失敗: {response.StatusCode}";
+                    MessageBox.Show($"刪除失敗，錯誤碼: {response.StatusCode}", "錯誤", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"刪除時發生例外: {ex.Message}", "錯誤", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
@@ -485,16 +586,35 @@ namespace WebDAVBox
 
 
     // ViewModel 擴充模型
-    public class WebDavItemViewModel
+    public class FileItemViewModel : INotifyPropertyChanged
     {
+        // リソース名 (例: "documents", "report.pdf")
         public string Name { get; set; }
-        public string UriPath { get; set; }
+
+        // パス (例: "/documents/report.pdf")
+        public string Path { get; set; }
+
+        // フォルダかどうか
         public bool IsCollection { get; set; }
-        public long ContentLength { get; set; }
-        public DateTime LastModified { get; set; }
+
+        // アイコン表示用 (例: 📁 または 📄)
         public string TypeDisplay => IsCollection ? "📁 資料夾" : "📄 檔案";
+
+        // サイズ (バイトまたは整形済み文字列)
+        public long? ContentLength { get; set; }
+
+        // 最終更新日時
+        public string LastModified { get; set; }
 
         // フォルダでなければ Visibility.Visible を返すプロパティを追加
         public Visibility DownloadButtonVisibility => IsCollection ? Visibility.Collapsed : Visibility.Visible;
+
+
+        // --- INotifyPropertyChanged の実装 ---
+        public event PropertyChangedEventHandler PropertyChanged;
+
+        protected void OnPropertyChanged(string propertyName) =>
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
+
 }
