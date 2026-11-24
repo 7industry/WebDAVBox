@@ -4,6 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:WebDAVBox"
+        PreviewKeyDown="Window_PreviewKeyDown"
         mc:Ignorable="d"
         Title="WPF WebDAV 客戶端"
         Height="500" Width="800" WindowStartupLocation="CenterScreen"
@@ -53,8 +54,10 @@
         <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,10">
             <Button x:Name="BtnGoUp" Content="⬆️ 上一層" Width="90" Height="30" Margin="0,0,10,0" Click="BtnGoUp_Click" IsEnabled="False"/>
             <Button x:Name="BtnRefresh" Content="🔄 重新整理" Width="90" Height="30" Margin="0,0,10,0" Click="BtnRefresh_Click" IsEnabled="False"/>
+            <Button x:Name="BtnRename" Content="✏️ 重新命名" Width="90" Height="30" Margin="0,0,10,0" Click="BtnRename_Click" IsEnabled="False"/>
             <Button x:Name="BtnUpload" Content="📤 上傳檔案" Width="90" Height="30" Margin="0,0,10,0" Click="BtnUpload_Click" IsEnabled="False"/>
             <Button x:Name="BtnDelete" Content="🗑️ 刪除檔案" Width="90" Height="30" Margin="0,0,10,0" Click="BtnDelete_Click" IsEnabled="False"/>
+            
             <!--<TextBlock Text="當前路徑:" VerticalAlignment="Center" Margin="10,0,5,0" FontWeight="Bold"/>
             <TextBlock x:Name="TxtCurrentPath" Text="/" VerticalAlignment="Center" Foreground="Blue"/>-->
         </StackPanel>

@@ -31,6 +31,7 @@ namespace WebDAVBox
 
         private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
         {
+            // TODO setting
             string url = "";
             string user = "";
             string pass = "";
@@ -64,6 +65,7 @@ namespace WebDAVBox
                     BtnRefresh.IsEnabled = true;
                     BtnUpload.IsEnabled = true;
                     BtnDelete.IsEnabled = true;
+                    BtnRename.IsEnabled = true;
                     TxtStatus.Text = "連線成功";
                     GbServerSettings.Visibility = Visibility.Collapsed;
                 }
@@ -190,7 +192,7 @@ namespace WebDAVBox
                     {
                         Name = itemName,
                         Path = resource.Uri,
-                        IsCollection = resource.IsCollection,
+                        IsDirectory = resource.IsCollection,
                         ContentLength = resource.ContentLength ?? 0,
                         LastModified = (resource.LastModifiedDate ?? DateTime.MinValue).ToString("yyyy/MM/dd HH:mm:ss")
                     });
@@ -198,7 +200,7 @@ namespace WebDAVBox
 
                 // 資料夾排在前面，按名稱排序
                 fileList = fileList
-                    .OrderByDescending(i => i.IsCollection)
+                    .OrderByDescending(i => i.IsDirectory)
                     .ThenBy(i => i.Name)
                     .ToList();
 
@@ -231,7 +233,7 @@ namespace WebDAVBox
         // 3. 雙擊進入資料夾
         private async void DgFiles_MouseDoubleClick(object sender, MouseButtonEventArgs e)
         {
-            if (DgFiles.SelectedItem is FileItemViewModel selectedItem && selectedItem.IsCollection)
+            if (DgFiles.SelectedItem is FileItemViewModel selectedItem && selectedItem.IsDirectory)
             {
                 // 取得相對路徑
                 Uri baseUri = new Uri(_serverUrl);
@@ -272,7 +274,7 @@ namespace WebDAVBox
         // 7. 下載檔案 (使用 RawHttpGet)
         private async void BtnDownloadItem_Click(object sender, RoutedEventArgs e)
         {
-            if (sender is Button btn && btn.DataContext is FileItemViewModel item && !item.IsCollection)
+            if (sender is Button btn && btn.DataContext is FileItemViewModel item && !item.IsDirectory)
             {
                 SaveFileDialog saveFileDialog = new SaveFileDialog
                 {
@@ -390,6 +392,99 @@ namespace WebDAVBox
             }
         }
 
+
+        // 重命名檔案 / 資料夾（WebDAV 本質為 MOVE）
+        private async void BtnRename_Click(object sender, RoutedEventArgs e)
+        {
+            FileItemViewModel selectedItem = DgFiles.SelectedItem as FileItemViewModel;
+
+            if (selectedItem == null)
+            {
+                MessageBox.Show("請先選擇要重新命名的檔案或資料夾。", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            // 取得輸入的新名稱（可替換為你專案中自訂的輸入視窗 / Dialog）
+            string newName = PromptNewName(selectedItem.Name);
+            if (string.IsNullOrWhiteSpace(newName) || newName == selectedItem.Name)
+            {
+                return;
+            }
+
+            // 簡單防呆：避免輸入包含路徑分隔符號
+            if (newName.Contains("/") || newName.Contains("\\"))
+            {
+                MessageBox.Show("新名稱不可包含 '/' 或 '\\'。", "提示", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            try
+            {
+                TxtStatus.Text = $"正在重新命名 {selectedItem.Name}...";
+
+                string sourcePath = selectedItem.Path; // 例: "/folder/old.txt" 或 "/folder/sub/"
+
+                string directoryPath = Path.GetDirectoryName(sourcePath);
+                string destinationPath = CombineRemotePath(directoryPath, newName, selectedItem.IsDirectory);
+
+                // 依你使用的 WebDAV 用戶端套件調整參數（例如 WebDav.Client 的 Move）
+                var moveParams = new WebDav.MoveParameters
+                {
+                    Overwrite = false // 避免意外覆蓋已存在的同名檔案
+                };
+                var response = await _client.Move(sourcePath, destinationPath, moveParams);
+
+                if (response.IsSuccessful)
+                {
+                    TxtStatus.Text = "重新命名成功";
+                    await LoadDirectoryAsync(_currentPath);
+                }
+                else
+                {
+                    TxtStatus.Text = $"重新命名失敗: {response.StatusCode}";
+                    MessageBox.Show($"重新命名失敗，錯誤碼: {response.StatusCode}", "錯誤", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                TxtStatus.Text = "重新命名發生例外";
+                MessageBox.Show($"重新命名時發生例外: {ex.Message}", "錯誤", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private static string PromptNewName(string currentName)
+        {
+            // 若專案有引用 Microsoft.VisualBasic，可用 Interaction.InputBox；
+            // 否則建議建立一個簡單的 WPF Window 輸入對話框並回傳字串。
+            var dialog = new Window
+            {
+                Title = "重新命名",
+                Width = 360,
+                Height = 140,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Owner = Application.Current?.MainWindow,
+                ResizeMode = ResizeMode.NoResize
+            };
+
+            var panel = new StackPanel { Margin = new Thickness(12) };
+            var textBox = new TextBox { Text = currentName, Margin = new Thickness(0, 0, 0, 12) };
+            textBox.SelectAll();
+
+            var btnPanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+            var okBtn = new Button { Content = "確定", Width = 75, IsDefault = true, Margin = new Thickness(0, 0, 8, 0) };
+            var cancelBtn = new Button { Content = "取消", Width = 75, IsCancel = true };
+
+            okBtn.Click += (s, args) => { dialog.DialogResult = true; };
+            cancelBtn.Click += (s, args) => { dialog.DialogResult = false; };
+
+            btnPanel.Children.Add(okBtn);
+            btnPanel.Children.Add(cancelBtn);
+            panel.Children.Add(textBox);
+            panel.Children.Add(btnPanel);
+            dialog.Content = panel;
+
+            return dialog.ShowDialog() == true ? textBox.Text.Trim() : null;
+        }
 
         #region 拖放上傳功能 (Drag & Drop)
         // 1. 當鼠標拖著檔案移入 DataGrid 區域時觸發
@@ -512,7 +607,7 @@ namespace WebDAVBox
                 string folderName = Path.GetFileName(localFolderPath);
 
                 // 1. 組合該資料夾在 WebDAV 上的遠端相對路徑 (確保以 '/' 結尾)
-                string remoteFolderPath = CombineWebDavPath(targetRemoteParentPath, folderName) + "/";
+                string remoteFolderPath = CombineRemotePath(targetRemoteParentPath, folderName) + "/";
 
                 TxtStatus.Text = $"正在建立遠端目錄: {remoteFolderPath}...";
 
@@ -557,7 +652,7 @@ namespace WebDAVBox
                 TxtStatus.Text = $"正在上傳: {fileName}...";
 
                 // 組合完整的遠端檔案路徑
-                string remoteFilePath = CombineWebDavPath(remoteTargetDirectoryPath, fileName);
+                string remoteFilePath = CombineRemotePath(remoteTargetDirectoryPath, fileName);
 
                 using (FileStream fileStream = File.OpenRead(localFilePath))
                 {
@@ -572,16 +667,56 @@ namespace WebDAVBox
             }
         }
 
-        /// <summary>
-        /// 安全拼接 WebDAV URL 路徑的輔助方法
-        /// </summary>
-        private string CombineWebDavPath(string basePath, string relativeName)
-        {
-            if (string.IsNullOrEmpty(basePath) || basePath == "/")
-                return "/" + relativeName;
 
-            return basePath.TrimEnd('/') + "/" + relativeName;
+        /// <summary>
+        /// 安全拼接 WebDAV URL 路徑: 組合完整的遠端檔案路徑
+        /// </summary>
+        /// <param name="directoryPath">父目錄路徑（如 "/folder"）</param>
+        /// <param name="targetName">目標檔案或資料夾名稱（如 "new.txt" 或 "subFolder"）</param>
+        /// <param name="isDirectory">目標是否為資料夾；若為 true 且來源路徑帶結尾 '/'，則保留結尾 '/'</param>
+        private static string CombineRemotePath(string directoryPath, string targetName, bool isDirectory = false)
+        {
+            string destinationPath;
+
+            if (string.IsNullOrEmpty(directoryPath)) {
+                destinationPath = "/" + targetName;
+            }
+            else
+            {
+                // 将反斜杠 '\' 替换为正斜杠 '/'
+                string normalizedDirectoryPath = directoryPath.Replace('\\', '/');
+
+                if (isDirectory)
+                {
+                    string trimmed = normalizedDirectoryPath.TrimEnd('/');
+                    int lastSlashIndex = trimmed.LastIndexOf('/');
+                    string parentDir = lastSlashIndex >= 0 ? trimmed.Substring(0, lastSlashIndex + 1) : "/";
+                    destinationPath = parentDir + targetName;
+                }
+                else
+                {
+                    destinationPath = normalizedDirectoryPath.TrimEnd('/') + "/" + targetName;
+                }
+            }
+            return destinationPath;
         }
+
+        #region shortcut
+
+        private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.F2)
+            {
+                if (BtnRename.IsEnabled && DgFiles.SelectedItem != null)
+                {
+                    e.Handled = true;
+                    BtnRename_Click(BtnRename, new RoutedEventArgs());
+                }
+            }
+        }
+
+        #endregion
+
     }
 
 
@@ -595,10 +730,10 @@ namespace WebDAVBox
         public string Path { get; set; }
 
         // フォルダかどうか
-        public bool IsCollection { get; set; }
+        public bool IsDirectory { get; set; }   
 
         // アイコン表示用 (例: 📁 または 📄)
-        public string TypeDisplay => IsCollection ? "📁 資料夾" : "📄 檔案";
+        public string TypeDisplay => IsDirectory ? "📁 資料夾" : "📄 檔案";
 
         // サイズ (バイトまたは整形済み文字列)
         public long? ContentLength { get; set; }
@@ -607,7 +742,7 @@ namespace WebDAVBox
         public string LastModified { get; set; }
 
         // フォルダでなければ Visibility.Visible を返すプロパティを追加
-        public Visibility DownloadButtonVisibility => IsCollection ? Visibility.Collapsed : Visibility.Visible;
+        public Visibility DownloadButtonVisibility => IsDirectory ? Visibility.Collapsed : Visibility.Visible;
 
 
         // --- INotifyPropertyChanged の実装 ---
